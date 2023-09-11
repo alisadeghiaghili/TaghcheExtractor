@@ -10,7 +10,7 @@ import base64
 import random
 import time
 import io
-from PIL import Image
+from PIL import Image, ImageFont, ImageDraw, JpegImagePlugin
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from PyQt5.QtCore import Qt
@@ -34,6 +34,7 @@ class ScreenshotApp(QWidget):
         self.additional_margin_bottom = 10
         
         self.geckodriver_path = r'./geckodriver.exe'
+        self.progress_label = QLabel('', self)
         self.initUI()
 
     def initUI(self):
@@ -82,22 +83,26 @@ class ScreenshotApp(QWidget):
         self.width_spinbox.setValue(self.app_width)
         height_width_layout.addWidget(self.width_spinbox)
 
-        self.capture_button = QPushButton('Capture', self)
-        self.capture_button.clicked.connect(self.capture_screenshots)
-
-        self.progress_bar = QProgressBar(self)
-        self.progress_bar.setAlignment(Qt.AlignCenter)
-        self.progress_bar.setValue(0)
-
         main_layout = QVBoxLayout()
         main_layout.addLayout(margin_layout)
         main_layout.addLayout(height_width_layout)
-        main_layout.addWidget(self.capture_button)
+
+        button_layout = QHBoxLayout()
+        self.capture_button = QPushButton('Capture', self)
+        self.capture_button.clicked.connect(self.capture_screenshots)
+        button_layout.addWidget(self.capture_button)
+
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setAlignment(Qt.AlignCenter)
+
+        main_layout.addLayout(button_layout)
+        main_layout.addWidget(self.progress_label)
         main_layout.addWidget(self.progress_bar)
 
         self.setLayout(main_layout)
 
         self.show()
+
 
     def capture_screenshots(self):
         self.additional_margin_left = self.margin_left_spinbox.value()
@@ -119,7 +124,7 @@ class ScreenshotApp(QWidget):
 
         total_pages = int(driver.find_element(By.XPATH, '//*[@id="totalPages"]').text)
 
-        for this_page in range(total_pages + 25):
+        for this_page in range(total_pages): # + 25):
             time.sleep(random.uniform(0, 5))
 
             if this_page % 25 == 0:
@@ -131,11 +136,26 @@ class ScreenshotApp(QWidget):
 
             imagelist.append(Image.open(rf'D:\Taghche\book/{this_page}.png'))
 
-            progress = int((this_page + 1) / (total_pages + 25) * 100)
+
+            progress = int((this_page + 1) / (total_pages) * 100)# + 25) * 100)
             self.progress_bar.setValue(progress)
+            
+            remaining_pages = total_pages - this_page
+            time_remaining = int(remaining_pages * 5)  # Assuming 5 seconds per page
+            minutes_remaining = time_remaining // 60
+            seconds_remaining = time_remaining % 60
+            eta_text = f"ETA: {minutes_remaining} min {seconds_remaining} sec"
+            self.progress_label.setText(eta_text)
             QApplication.processEvents()
 
-        imagelist[0].save(r'D:\Taghche\book/result.pdf', save_all=True, append_images=imagelist)
+            imagelist[0].save(
+                r'D:\Taghche\book/result.pdf',
+                save_all=True,
+                append_images=imagelist,
+                resolution=300.0,  # Adjust this DPI value as needed
+                quality=95  # You can also adjust the quality
+            )
+
 
     def take_screenshot(self, driver, page_number):
         canvas = driver.find_element(By.CSS_SELECTOR, "#canvas0")
@@ -150,11 +170,22 @@ class ScreenshotApp(QWidget):
         right = width + self.additional_margin_right
         bottom = height + self.additional_margin_bottom
 
+        # Create a new image with a white background
         background = Image.new("RGB", (right - left, bottom - top), (255, 255, 255))
         background.paste(image, (self.additional_margin_left - left, self.additional_margin_top - top), mask=image.split()[3])
+        
+        
+        draw = ImageDraw.Draw(background)
+        font = ImageFont.load_default()
+        page_number_text = f"{page_number}"
+        text_width, text_height = draw.textsize(page_number_text, font=font)
+        text_x = (right - left - text_width) // 2
+        text_y = bottom - top - text_height
+        draw.text((text_x, text_y), page_number_text, fill=(0, 0, 0), font=font)
 
+        # Save the image with a white background
         image_path = rf"D:\Taghche\book/{page_number}.png"
-        background.save(image_path)
+        background.save(image_path, dpi=(300, 300))
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
