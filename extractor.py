@@ -124,7 +124,7 @@ class ScreenshotApp(QWidget):
 
         total_pages = int(driver.find_element(By.XPATH, '//*[@id="totalPages"]').text)
 
-        for this_page in range(total_pages): # + 25):
+        for this_page in range(total_pages + 1): # + 25):
             time.sleep(random.uniform(0, 5))
 
             if this_page % 25 == 0:
@@ -137,7 +137,7 @@ class ScreenshotApp(QWidget):
             imagelist.append(Image.open(rf'D:\Taghche\book/{this_page}.png'))
 
 
-            progress = int((this_page + 1) / (total_pages) * 100)# + 25) * 100)
+            progress = int((this_page + 1) / (total_pages + 1) * 100)# + 25) * 100)
             self.progress_bar.setValue(progress)
             
             remaining_pages = total_pages - this_page
@@ -181,7 +181,7 @@ class ScreenshotApp(QWidget):
         text_width, text_height = draw.textsize(page_number_text, font=font)
         text_x = (right - left - text_width) // 2
         text_y = bottom - top - text_height
-        draw.text((text_x, text_y), page_number_text, fill=(0, 0, 0), font=font)
+        draw.text((text_x, text_y), page_number_text + 1, fill=(0, 0, 0), font=font)
 
         # Save the image with a white background
         image_path = rf"D:\Taghche\book/{page_number}.png"
