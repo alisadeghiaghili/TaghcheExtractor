@@ -174,6 +174,8 @@ class ScreenshotApp(QWidget):
         background = Image.new("RGB", (right - left, bottom - top), (255, 255, 255))
         background.paste(image, (self.additional_margin_left - left, self.additional_margin_top - top), mask=image.split()[3])
         
+        # Convert the image to grayscale
+        grayscale_image = background.convert("L")
         
         draw = ImageDraw.Draw(background)
         font = ImageFont.load_default()
@@ -181,7 +183,7 @@ class ScreenshotApp(QWidget):
         text_width, text_height = draw.textsize(page_number_text, font=font)
         text_x = (right - left - text_width) // 2
         text_y = bottom - top - text_height
-        draw.text((text_x, text_y), page_number_text + 1, fill=(0, 0, 0), font=font)
+        draw.text((text_x, text_y), page_number_text, fill=(0, 0, 0), font=font)
 
         # Save the image with a white background
         image_path = rf"D:\Taghche\book/{page_number}.png"
