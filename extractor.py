@@ -120,7 +120,12 @@ class ScreenshotApp(QWidget):
         driver.set_window_size(self.app_width + self.original_margin_left + self.original_margin_right + self.additional_margin_left + self.additional_margin_right,
                                self.app_height + self.original_margin_top + self.original_margin_bottom + self.additional_margin_top + self.additional_margin_bottom)
         driver.get(blink)
-        time.sleep(20)
+        time.sleep(5)
+        try:
+            total_pages = int(driver.find_element(By.CSS_SELECTOR, '#totalPages').text)
+        except NoSuchElementException:
+            time.sleep(20)
+            total_pages = int(driver.find_element(By.CSS_SELECTOR, '#totalPages').text)
 
         total_pages = int(driver.find_element(By.XPATH, '//*[@id="totalPages"]').text)
 
