@@ -38,7 +38,7 @@ class ScreenshotApp(QWidget):
         self.initUI()
 
     def initUI(self):
-        self.setGeometry(100, 100, 400, 300)
+        self.setGeometry(100, 100, 400, 100)
         self.setWindowTitle('Screenshot App')
 
         margin_layout = QHBoxLayout()
