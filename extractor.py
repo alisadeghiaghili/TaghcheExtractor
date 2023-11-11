@@ -116,7 +116,7 @@ class ScreenshotApp(QWidget):
         blink = "https://taaghche.com/"
 
         imagelist = []
-        driver = webdriver.Firefox()
+        driver = webdriver.Firefox(executable_path=self.geckodriver_path)
         driver.set_window_size(self.app_width + self.original_margin_left + self.original_margin_right + self.additional_margin_left + self.additional_margin_right,
                                self.app_height + self.original_margin_top + self.original_margin_bottom + self.additional_margin_top + self.additional_margin_bottom)
         driver.get(blink)
