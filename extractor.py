@@ -5,14 +5,17 @@ Created on Mon Sep 11 17:53:49 2023
 @author: sadeghi.a
 """
 
+import os
 import sys
 import base64
 import random
 import time
 import io
-from PIL import Image, ImageFont, ImageDraw, JpegImagePlugin
+from PIL import Image, ImageFont, ImageDraw
 from selenium import webdriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.service import Service
+from selenium.common.exceptions import NoSuchElementException
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QSpinBox, QVBoxLayout, QHBoxLayout, QProgressBar
 
@@ -34,6 +37,7 @@ class ScreenshotApp(QWidget):
         self.additional_margin_bottom = 10
         
         self.geckodriver_path = r'./geckodriver.exe'
+        self.output_dir = r'D:\Taghche\book'
         self.progress_label = QLabel('', self)
         self.initUI()
 
@@ -115,8 +119,15 @@ class ScreenshotApp(QWidget):
 
         blink = "https://taaghche.com/"
 
+        os.makedirs(self.output_dir, exist_ok=True)
+
         imagelist = []
-        driver = webdriver.Firefox(executable_path=self.geckodriver_path)
+        # Use an explicit geckodriver if present; otherwise let Selenium
+        # Manager locate/download a compatible one.
+        service = (Service(self.geckodriver_path)
+                   if os.path.exists(self.geckodriver_path)
+                   else Service())
+        driver = webdriver.Firefox(service=service)
         driver.set_window_size(self.app_width + self.original_margin_left + self.original_margin_right + self.additional_margin_left + self.additional_margin_right,
                                self.app_height + self.original_margin_top + self.original_margin_bottom + self.additional_margin_top + self.additional_margin_bottom)
         driver.get(blink)
@@ -127,8 +138,6 @@ class ScreenshotApp(QWidget):
             time.sleep(20)
             total_pages = int(driver.find_element(By.CSS_SELECTOR, '#totalPages').text)
 
-        total_pages = int(driver.find_element(By.XPATH, '//*[@id="totalPages"]').text)
-
         for this_page in range(total_pages + 1): # + 25):
             time.sleep(random.uniform(0, 5))
 
@@ -137,14 +146,12 @@ class ScreenshotApp(QWidget):
 
             self.take_screenshot(driver, this_page)
 
-            driver.find_element(By.ID, '___nextPageMobile').click()
-
-            imagelist.append(Image.open(rf'D:\Taghche\book/{this_page}.png'))
-
+            image_path = os.path.join(self.output_dir, f'{this_page}.png')
+            imagelist.append(Image.open(image_path))
 
             progress = int((this_page + 1) / (total_pages + 1) * 100)# + 25) * 100)
             self.progress_bar.setValue(progress)
-            
+
             remaining_pages = total_pages - this_page
             time_remaining = int(remaining_pages * 5)  # Assuming 5 seconds per page
             minutes_remaining = time_remaining // 60
@@ -153,13 +160,24 @@ class ScreenshotApp(QWidget):
             self.progress_label.setText(eta_text)
             QApplication.processEvents()
 
-            imagelist[0].save(
-                r'D:\Taghche\book/result.pdf',
-                save_all=True,
-                append_images=imagelist,
-                resolution=300.0,  # Adjust this DPI value as needed
-                quality=95  # You can also adjust the quality
-            )
+            # Only navigate to the next page if there is one left.
+            if this_page != total_pages:
+                driver.find_element(By.ID, '___nextPageMobile').click()
+
+        driver.quit()
+
+        # Build the PDF once, after all pages are captured.
+        imagelist[0].save(
+            os.path.join(self.output_dir, 'result.pdf'),
+            save_all=True,
+            append_images=imagelist[1:],
+            resolution=300.0,  # Adjust this DPI value as needed
+            quality=95  # You can also adjust the quality
+        )
+
+        # Release file handles now that everything is written.
+        for img in imagelist:
+            img.close()
 
 
     def take_screenshot(self, driver, page_number):
@@ -178,21 +196,25 @@ class ScreenshotApp(QWidget):
         # Create a new image with a white background
         background = Image.new("RGB", (right - left, bottom - top), (255, 255, 255))
         background.paste(image, (self.additional_margin_left - left, self.additional_margin_top - top), mask=image.split()[3])
-        
-        # Convert the image to grayscale
-        grayscale_image = background.convert("L")
-        
+
+        # Draw the page number onto the (still RGB) background.
         draw = ImageDraw.Draw(background)
         font = ImageFont.load_default()
         page_number_text = f"{page_number}"
-        text_width, text_height = draw.textsize(page_number_text, font=font)
+        text_left, text_top, text_right, text_bottom = draw.textbbox((0, 0), page_number_text, font=font)
+        text_width = text_right - text_left
+        text_height = text_bottom - text_top
         text_x = (right - left - text_width) // 2
         text_y = bottom - top - text_height
         draw.text((text_x, text_y), page_number_text, fill=(0, 0, 0), font=font)
 
-        # Save the image with a white background
-        image_path = rf"D:\Taghche\book/{page_number}.png"
-        background.save(image_path, dpi=(300, 300))
+        # Convert to grayscale only after the text is drawn, so the
+        # page number is preserved in the output.
+        grayscale_image = background.convert("L")
+
+        # Save the grayscale image with a white background.
+        image_path = os.path.join(self.output_dir, f'{page_number}.png')
+        grayscale_image.save(image_path, dpi=(300, 300))
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
