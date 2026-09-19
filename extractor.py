@@ -17,7 +17,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service
 from selenium.common.exceptions import NoSuchElementException
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QSpinBox, QVBoxLayout, QHBoxLayout, QProgressBar
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QSpinBox, QVBoxLayout, QHBoxLayout, QProgressBar, QFileDialog, QLineEdit, QMessageBox
 
 class ScreenshotApp(QWidget):
     def __init__(self):
@@ -36,10 +36,30 @@ class ScreenshotApp(QWidget):
         self.additional_margin_right = 10
         self.additional_margin_bottom = 10
         
-        self.geckodriver_path = r'./geckodriver.exe'
+        self.geckodriver_path = self._resolve_geckodriver()
         self.output_dir = r'D:\Taghche\book'
         self.progress_label = QLabel('', self)
         self.initUI()
+
+    @classmethod
+    def _resolve_geckodriver(cls):
+        """Prefer a bundled geckodriver, then one next to the app, then let
+        Selenium Manager find one."""
+        candidates = []
+        if getattr(sys, 'frozen', False):
+            # A --onefile exe extracts bundled data to a temp dir at runtime.
+            meipass = getattr(sys, '_MEIPASS', '')
+            if meipass:
+                candidates.append(os.path.join(meipass, 'geckodriver.exe'))
+            candidates.append(os.path.join(os.path.dirname(sys.executable),
+                                           'geckodriver.exe'))
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        candidates.append(os.path.join(script_dir, 'geckodriver.exe'))
+        candidates.append(r'./geckodriver.exe')
+        for path in candidates:
+            if path and os.path.exists(path):
+                return path
+        return r'./geckodriver.exe'  # fallback -> Selenium Manager
 
     def initUI(self):
         self.setGeometry(100, 100, 400, 100)
@@ -73,6 +93,16 @@ class ScreenshotApp(QWidget):
         self.margin_bottom_spinbox.setValue(self.additional_margin_bottom)
         margin_layout.addWidget(self.margin_bottom_spinbox)
 
+        output_layout = QHBoxLayout()
+        output_layout.addWidget(QLabel('Output folder:', self))
+        self.output_dir_edit = QLineEdit(self)
+        self.output_dir_edit.setText(self.output_dir)
+        self.output_dir_edit.setMinimumWidth(180)
+        output_layout.addWidget(self.output_dir_edit)
+        browse_button = QPushButton('Browse...', self)
+        browse_button.clicked.connect(self.choose_output_dir)
+        output_layout.addWidget(browse_button)
+
         height_width_layout = QHBoxLayout()
 
         height_width_layout.addWidget(QLabel('Height:', self))
@@ -89,6 +119,7 @@ class ScreenshotApp(QWidget):
 
         main_layout = QVBoxLayout()
         main_layout.addLayout(margin_layout)
+        main_layout.addLayout(output_layout)
         main_layout.addLayout(height_width_layout)
 
         button_layout = QHBoxLayout()
@@ -107,8 +138,16 @@ class ScreenshotApp(QWidget):
 
         self.show()
 
+    def choose_output_dir(self):
+        directory = QFileDialog.getExistingDirectory(
+            self, 'Choose output folder', self.output_dir_edit.text())
+        if directory:
+            self.output_dir_edit.setText(directory)
+
 
     def capture_screenshots(self):
+        self.output_dir = self.output_dir_edit.text().strip() or self.output_dir
+
         self.additional_margin_left = self.margin_left_spinbox.value()
         self.additional_margin_top = self.margin_top_spinbox.value()
         self.additional_margin_right = self.margin_right_spinbox.value()
@@ -122,62 +161,75 @@ class ScreenshotApp(QWidget):
         os.makedirs(self.output_dir, exist_ok=True)
 
         imagelist = []
-        # Use an explicit geckodriver if present; otherwise let Selenium
-        # Manager locate/download a compatible one.
-        service = (Service(self.geckodriver_path)
-                   if os.path.exists(self.geckodriver_path)
-                   else Service())
-        driver = webdriver.Firefox(service=service)
-        driver.set_window_size(self.app_width + self.original_margin_left + self.original_margin_right + self.additional_margin_left + self.additional_margin_right,
-                               self.app_height + self.original_margin_top + self.original_margin_bottom + self.additional_margin_top + self.additional_margin_bottom)
-        driver.get(blink)
-        time.sleep(5)
+        driver = None
         try:
-            total_pages = int(driver.find_element(By.CSS_SELECTOR, '#totalPages').text)
-        except NoSuchElementException:
-            time.sleep(20)
-            total_pages = int(driver.find_element(By.CSS_SELECTOR, '#totalPages').text)
+            # Use an explicit geckodriver if present; otherwise let Selenium
+            # Manager locate/download a compatible one.
+            service = (Service(self.geckodriver_path)
+                       if os.path.exists(self.geckodriver_path)
+                       else Service())
+            driver = webdriver.Firefox(service=service)
+            driver.set_window_size(self.app_width + self.original_margin_left + self.original_margin_right + self.additional_margin_left + self.additional_margin_right,
+                                   self.app_height + self.original_margin_top + self.original_margin_bottom + self.additional_margin_top + self.additional_margin_bottom)
+            driver.get(blink)
+            time.sleep(5)
+            try:
+                total_pages = int(driver.find_element(By.CSS_SELECTOR, '#totalPages').text)
+            except NoSuchElementException:
+                time.sleep(20)
+                total_pages = int(driver.find_element(By.CSS_SELECTOR, '#totalPages').text)
 
-        for this_page in range(total_pages + 1): # + 25):
-            time.sleep(random.uniform(0, 5))
+            for this_page in range(total_pages + 1): # + 25):
+                time.sleep(random.uniform(0, 5))
 
-            if this_page % 25 == 0:
-                time.sleep(15)
+                if this_page % 25 == 0:
+                    time.sleep(15)
 
-            self.take_screenshot(driver, this_page)
+                self.take_screenshot(driver, this_page)
 
-            image_path = os.path.join(self.output_dir, f'{this_page}.png')
-            imagelist.append(Image.open(image_path))
+                image_path = os.path.join(self.output_dir, f'{this_page}.png')
+                imagelist.append(Image.open(image_path))
 
-            progress = int((this_page + 1) / (total_pages + 1) * 100)# + 25) * 100)
-            self.progress_bar.setValue(progress)
+                progress = int((this_page + 1) / (total_pages + 1) * 100)# + 25) * 100)
+                self.progress_bar.setValue(progress)
 
-            remaining_pages = total_pages - this_page
-            time_remaining = int(remaining_pages * 5)  # Assuming 5 seconds per page
-            minutes_remaining = time_remaining // 60
-            seconds_remaining = time_remaining % 60
-            eta_text = f"ETA: {minutes_remaining} min {seconds_remaining} sec"
-            self.progress_label.setText(eta_text)
-            QApplication.processEvents()
+                remaining_pages = total_pages - this_page
+                time_remaining = int(remaining_pages * 5)  # Assuming 5 seconds per page
+                minutes_remaining = time_remaining // 60
+                seconds_remaining = time_remaining % 60
+                eta_text = f"ETA: {minutes_remaining} min {seconds_remaining} sec"
+                self.progress_label.setText(eta_text)
+                QApplication.processEvents()
 
-            # Only navigate to the next page if there is one left.
-            if this_page != total_pages:
-                driver.find_element(By.ID, '___nextPageMobile').click()
+                # Only navigate to the next page if there is one left.
+                if this_page != total_pages:
+                    driver.find_element(By.ID, '___nextPageMobile').click()
 
-        driver.quit()
+            # Build the PDF once, after all pages are captured.
+            imagelist[0].save(
+                os.path.join(self.output_dir, 'result.pdf'),
+                save_all=True,
+                append_images=imagelist[1:],
+                resolution=300.0,  # Adjust this DPI value as needed
+                quality=95  # You can also adjust the quality
+            )
 
-        # Build the PDF once, after all pages are captured.
-        imagelist[0].save(
-            os.path.join(self.output_dir, 'result.pdf'),
-            save_all=True,
-            append_images=imagelist[1:],
-            resolution=300.0,  # Adjust this DPI value as needed
-            quality=95  # You can also adjust the quality
-        )
+            # Release file handles now that everything is written.
+            for img in imagelist:
+                img.close()
 
-        # Release file handles now that everything is written.
-        for img in imagelist:
-            img.close()
+            self.progress_label.setText('Done.')
+        except Exception as e:
+            self.progress_label.setText('Error')
+            QMessageBox.critical(
+                self, 'Capture failed',
+                f'Something went wrong:\n\n{e}')
+        finally:
+            if driver is not None:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
 
 
     def take_screenshot(self, driver, page_number):

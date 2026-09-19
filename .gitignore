@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 geckodriver.exe
+build/
+dist/
+*.spec
+*.log
