@@ -11,6 +11,8 @@ import base64
 import random
 import time
 import io
+import faulthandler
+import traceback
 from PIL import Image, ImageFont, ImageDraw
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -18,6 +20,21 @@ from selenium.webdriver.firefox.service import Service
 from selenium.common.exceptions import NoSuchElementException
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QSpinBox, QVBoxLayout, QHBoxLayout, QProgressBar, QFileDialog, QLineEdit, QMessageBox
+
+
+def _log_path():
+    base = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) \
+        else os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, 'taghche_debug.log')
+
+
+def log(msg):
+    try:
+        with open(_log_path(), 'a', encoding='utf-8') as f:
+            f.write(f'[{time.strftime("%H:%M:%S")}] {msg}\n')
+    except Exception:
+        pass
+
 
 class ScreenshotApp(QWidget):
     def __init__(self):
@@ -41,25 +58,45 @@ class ScreenshotApp(QWidget):
         self.progress_label = QLabel('', self)
         self.initUI()
 
+    @staticmethod
+    def _find_geckodriver(root, max_depth=3):
+        """Return the path of a real geckodriver.exe under root, else None.
+        Walks a few levels because the bundle may nest it in a subfolder."""
+        if not root or not os.path.isdir(root):
+            return None
+        direct = os.path.join(root, 'geckodriver.exe')
+        if os.path.isfile(direct):
+            return direct
+        base_len = len(os.path.abspath(root).split(os.sep))
+        for dirpath, _dirs, files in os.walk(root):
+            depth = len(os.path.abspath(dirpath).split(os.sep)) - base_len
+            if depth >= max_depth:
+                _dirs[:] = []
+                continue
+            if 'geckodriver.exe' in files:
+                candidate = os.path.join(dirpath, 'geckodriver.exe')
+                if os.path.isfile(candidate):
+                    return candidate
+        return None
+
     @classmethod
     def _resolve_geckodriver(cls):
-        """Prefer a bundled geckodriver, then one next to the app, then let
-        Selenium Manager find one."""
-        candidates = []
+        """Find a bundled or local geckodriver, or return None to let
+        Selenium Manager locate/download a compatible one."""
+        roots = []
         if getattr(sys, 'frozen', False):
             # A --onefile exe extracts bundled data to a temp dir at runtime.
             meipass = getattr(sys, '_MEIPASS', '')
             if meipass:
-                candidates.append(os.path.join(meipass, 'geckodriver.exe'))
-            candidates.append(os.path.join(os.path.dirname(sys.executable),
-                                           'geckodriver.exe'))
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        candidates.append(os.path.join(script_dir, 'geckodriver.exe'))
-        candidates.append(r'./geckodriver.exe')
-        for path in candidates:
-            if path and os.path.exists(path):
-                return path
-        return r'./geckodriver.exe'  # fallback -> Selenium Manager
+                roots.append(meipass)
+            roots.append(os.path.dirname(sys.executable))
+        roots.append(os.path.dirname(os.path.abspath(__file__)))
+        roots.append(os.getcwd())
+        for root in roots:
+            found = cls._find_geckodriver(root)
+            if found:
+                return found
+        return None  # -> Selenium Manager
 
     def initUI(self):
         self.setGeometry(100, 100, 400, 100)
@@ -158,26 +195,38 @@ class ScreenshotApp(QWidget):
 
         blink = "https://taaghche.com/"
 
-        os.makedirs(self.output_dir, exist_ok=True)
+        log(f'capture started; output_dir={self.output_dir}; '
+            f'geckodriver={self.geckodriver_path}; size={self.app_width}x{self.app_height}')
 
         imagelist = []
         driver = None
         try:
+            os.makedirs(self.output_dir, exist_ok=True)
+            log(f'output dir ready: {self.output_dir}')
             # Use an explicit geckodriver if present; otherwise let Selenium
             # Manager locate/download a compatible one.
-            service = (Service(self.geckodriver_path)
-                       if os.path.exists(self.geckodriver_path)
-                       else Service())
+            if self.geckodriver_path and os.path.isfile(self.geckodriver_path):
+                service = Service(self.geckodriver_path)
+                log(f'using bundled geckodriver: {self.geckodriver_path}')
+            else:
+                service = Service()
+                log('no bundled geckodriver; using Selenium Manager')
+            log('launching Firefox...')
             driver = webdriver.Firefox(service=service)
+            log(f"Firefox started, version={driver.capabilities.get('browserVersion')}")
             driver.set_window_size(self.app_width + self.original_margin_left + self.original_margin_right + self.additional_margin_left + self.additional_margin_right,
                                    self.app_height + self.original_margin_top + self.original_margin_bottom + self.additional_margin_top + self.additional_margin_bottom)
+            log('navigating to site...')
             driver.get(blink)
+            log(f"page loaded, title={driver.title!r}")
             time.sleep(5)
             try:
                 total_pages = int(driver.find_element(By.CSS_SELECTOR, '#totalPages').text)
             except NoSuchElementException:
+                log('totalPages not found yet, waiting 20s...')
                 time.sleep(20)
                 total_pages = int(driver.find_element(By.CSS_SELECTOR, '#totalPages').text)
+            log(f'total_pages={total_pages}')
 
             for this_page in range(total_pages + 1): # + 25):
                 time.sleep(random.uniform(0, 5))
@@ -185,9 +234,11 @@ class ScreenshotApp(QWidget):
                 if this_page % 25 == 0:
                     time.sleep(15)
 
+                log(f'page {this_page}: capturing')
                 self.take_screenshot(driver, this_page)
 
                 image_path = os.path.join(self.output_dir, f'{this_page}.png')
+                log(f'page {this_page}: saving {image_path}')
                 imagelist.append(Image.open(image_path))
 
                 progress = int((this_page + 1) / (total_pages + 1) * 100)# + 25) * 100)
@@ -220,10 +271,11 @@ class ScreenshotApp(QWidget):
 
             self.progress_label.setText('Done.')
         except Exception as e:
+            log('EXCEPTION:\n' + traceback.format_exc())
             self.progress_label.setText('Error')
             QMessageBox.critical(
                 self, 'Capture failed',
-                f'Something went wrong:\n\n{e}')
+                f'Something went wrong:\n\n{e}\n\nDetails in:\n{_log_path()}')
         finally:
             if driver is not None:
                 try:
@@ -268,7 +320,23 @@ class ScreenshotApp(QWidget):
         image_path = os.path.join(self.output_dir, f'{page_number}.png')
         grayscale_image.save(image_path, dpi=(300, 300))
 
+def _unhandled_exception(exc_type, exc_value, exc_tb):
+    log('UNHANDLED EXCEPTION:\n' + ''.join(traceback.format_exception(exc_type, exc_value, exc_tb)))
+
+
+# Kept at module level so the handle stays open for the process lifetime.
+_LOG_HANDLE = None
+
+
 if __name__ == '__main__':
+    # Record hard crashes (segfaults etc.) in the log file too.
+    _LOG_HANDLE = open(_log_path(), 'a', encoding='utf-8')
+    faulthandler.enable(_LOG_HANDLE)
+    sys.excepthook = _unhandled_exception
+
+    log(f'starting (frozen={getattr(sys, "frozen", False)}); '
+        f'geckodriver={ScreenshotApp._resolve_geckodriver()}')
+
     app = QApplication(sys.argv)
     ex = ScreenshotApp()
     sys.exit(app.exec_())
