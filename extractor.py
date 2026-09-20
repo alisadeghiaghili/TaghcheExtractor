@@ -18,6 +18,16 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service
 from selenium.common.exceptions import NoSuchElementException
+# Force-bundle the lazily-loaded Firefox/remote driver modules so PyInstaller
+# does not miss them (selenium imports them at runtime via __getattr__).
+import selenium.webdriver.firefox.webdriver as _fw
+import selenium.webdriver.firefox.options as _fo
+import selenium.webdriver.remote.webdriver as _rw
+import selenium.webdriver.remote.remote_connection as _rconn
+import selenium.webdriver.remote.errorhandler as _re
+import selenium.webdriver.remote.command as _rc
+# Referenced so the imports count as "used"; guarantees they are bundled.
+_SELENIUM_BUNDLED = (_fw, _fo, _rw, _rconn, _re, _rc)
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QSpinBox, QVBoxLayout, QHBoxLayout, QProgressBar, QFileDialog, QLineEdit, QMessageBox
 
