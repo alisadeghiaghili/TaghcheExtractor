@@ -14,6 +14,7 @@ import io
 import faulthandler
 import traceback
 from PIL import Image, ImageFont, ImageDraw
+import selenium
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.service import Service
@@ -345,6 +346,8 @@ if __name__ == '__main__':
     sys.excepthook = _unhandled_exception
 
     log(f'starting (frozen={getattr(sys, "frozen", False)}); '
+        f'selenium={getattr(selenium, "__version__", "unknown")}; '
+        f'python={sys.version.split()[0]}; '
         f'geckodriver={ScreenshotApp._resolve_geckodriver()}')
 
     app = QApplication(sys.argv)
